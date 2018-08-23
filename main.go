@@ -16,6 +16,7 @@ func main() {
 	http.HandleFunc("/save", saveData)
 	http.HandleFunc("/check", checkStatus)
 	http.HandleFunc("/unlock", unlock)
+	http.HandleFunc("/logdata", logData)
 	fmt.Println("localhost:8090 is runing...")
 	log.Fatal(http.ListenAndServe(":8090", nil))
 }
@@ -48,13 +49,29 @@ func createTable() {
 	sqlCreateTable = `
 	CREATE TABLE IF NOT EXISTS USER_UNLOCK (
 		ID INTEGER PRIMARY KEY AUTOINCREMENT,
-		createDate datetime DEFAULT NULL,
 		name varchar(255) DEFAULT NULL,
 		password varchar(255) DEFAULT NULL
 	);`
 	_, err = db.Exec(sqlCreateTable)
 	if err != nil {
 		panic(err)
+	}
+	sqlQuery := `SELECT count(*) AS total FROM USER_UNLOCK`
+	row, _ := db.Query(sqlQuery)
+	var total int
+	for row.Next() {
+		row.Scan(&total)
+	}
+	if total == 0 {
+		sqlInsertStatus := `INSERT INTO USER_UNLOCK (name,password) VALUES 
+		('Pongsri','AGSFAGSFCXVGADFSRTYTGFREDSKJHGFDER');`
+		_, err = db.Exec(sqlInsertStatus)
+		sqlInsertStatus = `INSERT INTO USER_UNLOCK (name,password) VALUES 
+		('Nongyao','JAHBGCLSUDIDHDTEUYYUIUYTIUYTIUYTYU');`
+		_, err = db.Exec(sqlInsertStatus)
+		sqlInsertStatus = `INSERT INTO USER_UNLOCK (name,password) VALUES 
+		('Sununta','HDYBCGSTREUBDFHJKLLJHGHGHGHHGHGHGH');`
+		_, err = db.Exec(sqlInsertStatus)
 	}
 }
 
@@ -123,6 +140,7 @@ func checkStatus(w http.ResponseWriter, r *http.Request) {
 		for row.Next() {
 			row.Scan(&id, &createDate, &status, &detail)
 		}
+		row.Close()
 		mapData := make(map[string]string)
 		mapData["createDate"] = createDate
 		mapData["status"] = status
@@ -141,17 +159,18 @@ func unlock(w http.ResponseWriter, r *http.Request) {
 	defer db.Close()
 	if r.Method == http.MethodPost {
 		body := bodyToJSON(r)
-		sqlQuery := `SELECT ID, createDate, name, password FROM USER_UNLOCK WHERE password = ?`
+		sqlQuery := `SELECT id, name, password FROM USER_UNLOCK WHERE password = ?`
 		row, err := db.Query(sqlQuery, body["password"])
 		if err != nil {
 			panic(err)
 		}
-		var createDate, name, password string
+		var name, password string
 		var id int
 		password = "no"
 		for row.Next() {
-			row.Scan(&id, &createDate, &name, &password)
+			row.Scan(&id, &name, &password)
 		}
+		row.Close()
 		mapData := make(map[string]string)
 		if password == "no" {
 			w.Header().Set("Content-Type", "application/json")
@@ -161,6 +180,45 @@ func unlock(w http.ResponseWriter, r *http.Request) {
 		}
 		mapData["status"] = "success"
 		mapData["name"] = name
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(mapData)
+		return
+	}
+	http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+	return
+}
+
+//DataLog out put
+type DataLog struct {
+	ID         int
+	CreateDate string
+	PartMaster string
+	QtyMaster  int
+	Status     string
+	Detail     string
+	UnlockBy   string
+}
+
+func logData(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	db := getConnection()
+	defer db.Close()
+	if r.Method == http.MethodPost {
+		sqlQuery := `SELECT ID, createDate, part_master, qty_master, status, detail, unlock_by FROM BARCODE_COMPARE`
+		rows, err := db.Query(sqlQuery)
+		if err != nil {
+			panic(err)
+		}
+		var dataList []DataLog
+		for rows.Next() {
+			dataInList := DataLog{}
+			rows.Scan(&dataInList.ID, &dataInList.CreateDate, &dataInList.PartMaster, &dataInList.QtyMaster, &dataInList.Status, &dataInList.Detail, &dataInList.UnlockBy)
+			dataList = append(dataList, dataInList)
+		}
+		rows.Close()
+		mapData := make(map[string]interface{})
+		mapData["dataList"] = dataList
+		mapData["status"] = "success"
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(mapData)
 		return
